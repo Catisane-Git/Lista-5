@@ -1,0 +1,337 @@
+---
+title: "Política Judicial"
+subtitle: "Uma proposta de mensuração dos posicionamentos ideológicos dos Ministros do STF a partir das decisões proferidas em ações de controle concentrado de constitucionalidade ajuizadas por partidos políticos" 
+author: "Gustavo Henrique Catisane Diniz"
+date: "`r Sys.Date()`"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Objeto da análise
+
+Pergunta: Há diferença entre os **posicionamentos ideológicos** dos
+Ministros do STF indicados por Presidentes de Direita e de Esquerda?
+
+Hipótese nula (H0): a média dos "posicionamentos ideológicos" dos
+Ministros do STF indicados por Presidentes da República classificados
+ideologicamente como de Direita **não diverge** da média dos
+"posicionamentos ideológicos" dos Ministros do STF indicados por
+Presidentes da República ideologicamente classificados como de Esquerda.
+
+Hipótese alternativa (HA): a média dos "posicionamentos ideológicos" dos
+Ministros do STF indicados por Presidentes da República classificados
+ideologicamente como de Direita **diverge** da média dos
+"posicionamentos ideológicos" dos Ministros do STF indicados por
+Presidentes da República ideologicamente classificados como de Esquerda.
+
+Para a mensuração do denominado "posicionamento ideológico" dos
+Ministros do Supremo Tribunal Federal foi criado um "proxy" consistente
+na diferença entre o número de decisões proferidas em processos de
+controle concentrado de constitucionalidade (ADC/ADI/ADPF) favoráveis a
+partidos políticos de esquerda e o número dedecisões favoráveis a
+partidos de direita.
+
+Tendo em vista que o número de processos ajuizados pelos partidos de
+direita é menor do que o número de processos ajuizados pelos partidos de
+esquerda (786 e 1341), foi atribuído o peso de 1,7 às decisões
+proferidas nos processos ajuizados pelos partidos de direita. A fim de
+evitar valores negativos, a cada um dos valores foi adicionado 50
+unidades. Desse modo, valores acima de 50 revelam posicionamento
+ideológico à esquerda e valores abaixo de 50 revelam posicionamento
+ideológico à direita.
+
+Os Ministros da Suprema Corte foram classificados com base na ideologia
+do Presidente da República que os indicou. Além dos processos ajuizados
+pelos partidos políticos, foram incluídos os ajuizados pelos Presidentes
+da República eleitos a partir de 1988. Foram consideradas as decisões
+judiciaias proferidas após a promulgação da Constituição de 1988.
+
+# Preparação
+
+## Pacotes e definição do diretório de trabalho
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+pacman::p_load(tidyverse, readr, readxl, lubridate, dplyr, foreign, janitor)
+
+setwd("~/metodos_quantitativos_listas/Judicial-Politics")
+```
+
+## Manipulação dos dados
+
+Arquivos extraídos do sítio eletrônico do Programa "Corte Aberta" -
+(<https://portal.stf.jus.br/hotsites/corteaberta/>):
+processos_concentrado.xlsx; requerentes.xlsx; decisoes_concentrado.xlsx.
+(<https://github.com/Catisane-Git/Judicial-Politics->)
+
+## Preparação dos dados
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+processos_concentrado <- read_excel("processos_concentrado.xlsx") %>% 
+  janitor::clean_names()
+
+processos_concentrado <- processos_concentrado %>% 
+  select(processo, relator_atual, data_autuacao)
+
+requerentes <- read_excel("requerentes.xlsx") %>% 
+  janitor::clean_names() 
+
+requerentes <- requerentes %>% select(-legitimado_polo_passivo) %>%
+  rename(requerente = legitimado_polo_ativo)   
+
+processos_concentrado <- processos_concentrado %>% left_join(requerentes) %>% 
+  distinct()   
+
+processos_concentrado <- processos_concentrado %>% 
+  mutate (requerente_perfil = case_when(str_detect(requerente, 
+                                                   regex("PARTIDO|DEMOCRATA|REDE|PODEMOS|SOLIDARIEDADE|UNIÃO_BRASIL|CIDADANIA")) 
+                                        ~ "Partido político", str_detect(requerente, regex("ESTADO|DISTRITO")) 
+                                        ~ "Governador de Estado ou do Distrito Federal", str_detect(requerente, regex("ORDEM"))
+                                        ~"OAB", str_detect(requerente, regex("PROCURADOR|PROCURADORA|PROCURADORIA")) 
+                                        ~ "Procurador-Geral da República", str_detect(requerente, regex("ASSOCIAÇÃO|ASSOCIACAO|ESCRITORIO|ESCRITÓRIO|ALIANCA|ARTICULACAO|ARTICULAÇÃO|INSTITUTO"))
+                                        ~"Confederação sindical ou entidade de classe", str_detect(requerente, 
+                                                                                                   regex("CONFEDERAÇÃO|CONFEDERACAO|FEDERAÇÃO|FEDERACAO|UNIDAS|CENTRAL|SINDICATO"))
+                                        ~ "Confederação sindical ou entidade de classe", str_detect(requerente, regex("CÂMARA|CAMARA|SENADO|CONGRESSO NACIONAL"))
+                                        ~ "Poder Legislativo", str_detect(requerente, regex("PRESIDENTE DA REPÚBLICA"))
+                                        ~ "Presidente da República")) 
+
+partidos <- processos_concentrado %>%
+  filter(requerente_perfil %in% c("Partido político", "Presidente da República"))
+
+presidente <- partidos %>% filter(requerente_perfil == "Presidente da República") %>% 
+  mutate(ano_ajuizamento = year(data_autuacao)) %>% 
+  select(processo, relator_atual, ano_ajuizamento, requerente) %>%
+  mutate(Presidente_requerente = case_when(str_detect(ano_ajuizamento,"1995|1996|1997|1998|1999|2000|2001|2002") 
+                                           ~ "FHC", str_detect(ano_ajuizamento,"2003|2004|2005|2006|2007|2008|2009|2010|2023|2024")
+                                           ~ "Lula", str_detect(ano_ajuizamento,"2011|2012|2013|2014|2015|2016") ~ "Dilma",
+                                           str_detect(ano_ajuizamento,"2017|2018") ~ "Temer",
+                                           str_detect(ano_ajuizamento,"2019|2020|2021|2022") ~ "Bolsonaro")) %>% 
+  select(-requerente) %>% rename(requerente = Presidente_requerente) %>% 
+  mutate(requerente_ideologia = case_when(str_detect(requerente, regex("Lula|Dilma")) ~ "Esquerda",
+                                          str_detect(requerente, regex("FHC|Bolsonaro|Temer")) ~ "Direita")) 
+
+presidente <- presidente %>% rename(relator = relator_atual)
+
+partidos <- partidos %>% filter(requerente_perfil == "Partido político") %>% 
+  select(-requerente_perfil) %>% 
+  mutate(ano_ajuizamento = year(data_autuacao)) %>% 
+  select(processo, relator_atual, ano_ajuizamento, requerente) %>% 
+  mutate(partido_ideologia = case_when(str_detect(requerente, regex("PSTU|PCO|PCB|PSOL|PC DO B|PT|PDT|PSB|PARTIDO DOS TRABALHADORES|PARTIDO DEMOCRÁTICO TRABALHISTA|PARTIDO SOCIALISTA BRASILEIRO|PARTIDO TRABALHISTA BRASILEIRO|PST|P-SOL|PARTIDO COMUNISTA DO BRASIL|PARTIDO DEMOCRATICO TRABALHISTA")) ~ "Esquerda", 
+                                       str_detect(requerente, regex("REDE|PPS|PV|PARTIDO POPULAR SOCIALISTA|PARTIDO VERDE|PARTIDO PÓPULAR SOCIAL")) ~ "Esquerda", 
+                                       str_detect(requerente, regex("PTB|Avante|Solidariedade|SDD|PMN|PMB|PHS|PMDB|PSD|PSDB|Podemos|PPL|PL|PRTB|PROS|PR|PRP|PRB|PTC|PSL|Novo|PSC|Progressistas|Patriota|Democratas|União|PDC|PFL|PARTIDO DA REPÚBLICA|PARTIDO LIBERAL|DEMOCRATAS|PARTIDO TRABALHISTA CRISTÃO|SOLIDARIEDADE|PARTIDO DA SOCIAL DEMOCRACIA BRASILEIRA|PODEMOS|PARTIDO DO MOVIMENTO|CIDADANIA|PATRIOTA|NOVO|PARTIDO DA MULHER BRASILEIRA|PARTIDO SOCIAL|PARTIDO DA MOBILIZACAO NACIONAL|PARTIDO TRABLHISTA NACIONAL|PARTIDO REPUBLICANO|PARTIDO RENOVADOR|PEN")) ~ "Direita")) %>% 
+  rename(relator = relator_atual, requerente_ideologia = partido_ideologia)  
+
+partidos <- rbind(presidente, partidos)
+
+Sumario_ajuizamento <- partidos %>% group_by(requerente_ideologia) %>%
+  summarise(acoes_ajuizadas = n()) %>% na.omit() %>% 
+  mutate(prop = acoes_ajuizadas/2127*100)
+
+decisoes_concentrado <- read_excel("decisoes_concentrado.xlsx", 
+                                   col_types = c("text", "date", "text", "text", "text", "text")) %>% 
+  janitor::clean_names() %>% select(processo, data, andamento_agrupado) %>%
+  rename(data_decisao = data, decisao = andamento_agrupado) %>% 
+  filter(str_detect(decisao, regex("Procedente|Improcedente|Liminar deferida|Liminar indeferida"))) %>% 
+  select(processo, decisao)
+
+decisoes_partidos <- partidos %>% left_join(decisoes_concentrado)
+
+
+decisoes_partidos <- decisoes_partidos %>% na.omit() %>%
+  mutate(presidente_indicacao = case_when(str_detect(relator, regex("DJACI")) ~"Castelo Branco",
+                                          str_detect(relator, regex("MAYER|MOREIRA")) ~"Geisel", 
+                                          str_detect(relator, regex("NÉRI|NERI|ALDIR|OSCAR|SYDNEY")) ~ "Figueiredo",
+                                          str_detect(relator, regex("BORJA|CELSO|MADEIRA|BROSSARD|PERTENCE")) ~ "Sarney", 
+                                          str_detect(relator, regex("REZEK|MARCO|ILMAR|VELLOSO")) ~ "Collor", 
+                                          str_detect(relator, regex("CORRÊA|CORREA")) ~ "Itamar",
+                                          str_detect(relator, regex("JOBIM|MENDES|GRACIE")) ~ "FHC",
+                                          str_detect(relator, regex("CÁRMEN|CARMEN|GRAU|BRITTO|LEWANDOWSKI|ZANIN|DIREITO|TOFFOLI|BARBOSA|PELUSO|DINO")) ~ "Lula", 
+                                          str_detect(relator, regex("FUX|BARROSO|FACHIN|TEORI|WEBER")) ~ "Dilma", 
+                                          str_detect(relator, regex("MORAES")) ~ "Temer",
+                                          str_detect(relator, regex("NUNES|MENDONÇA|MENDONCA")) ~ "Bolsonaro")) %>% 
+  mutate(decisao_agrupada = case_when(str_detect(decisao, regex("indeferida|Improcedente")) ~ "Desfavorável",
+                                      str_detect(decisao, regex("deferida|Procedente")) ~ "Favorável")) %>%
+  select(processo, relator, presidente_indicacao, requerente, requerente_ideologia, decisao, decisao_agrupada) %>%
+  mutate(Presidente_ideologia = case_when(str_detect(presidente_indicacao, regex("Sarney|Collor|Temer|Bolsonaro|Itamar|FHC|Geisel|Castelo|Figueiredo")) ~ "Direita",
+                                          str_detect(presidente_indicacao, regex("Dilma|Lula")) ~"Esquerda"))%>%
+  select(processo, relator, presidente_indicacao, Presidente_ideologia, requerente, requerente_ideologia, decisao, decisao_agrupada)
+
+partidos_favoravel <- decisoes_partidos %>% filter(decisao_agrupada == "Favorável")
+
+partidos_favoravel_resumo <- partidos_favoravel %>% 
+  select(relator, Presidente_ideologia, requerente_ideologia)
+
+sumario1 <- partidos_favoravel_resumo %>% group_by(relator, requerente_ideologia) %>% 
+  summarise(decisoes_favoraveis = n())
+
+sumario1 <- sumario1 %>% 
+  pivot_wider(names_from = requerente_ideologia, values_from = decisoes_favoraveis) %>% 
+  mutate_all(replace_na, 0) %>% mutate(posicao_ideologia = Esquerda - 1.7*Direita) %>% mutate(presidente_indicacao = case_when(str_detect(relator, regex("DJACI")) ~"Castelo Branco",
+                                                                                                                               str_detect(relator, regex("MAYER|MOREIRA")) ~"Geisel", 
+                                                                                                                               str_detect(relator, regex("NÉRI|NERI|ALDIR|OSCAR|SYDNEY")) ~ "Figueiredo",
+                                                                                                                               str_detect(relator, regex("BORJA|CELSO|MADEIRA|BROSSARD|PERTENCE")) ~ "Sarney", 
+                                                                                                                               str_detect(relator, regex("REZEK|MARCO|ILMAR|VELLOSO")) ~ "Collor", 
+                                                                                                                               str_detect(relator, regex("CORRÊA|CORREA")) ~ "Itamar",
+                                                                                                                               str_detect(relator, regex("JOBIM|MENDES|GRACIE")) ~ "FHC",
+                                                                                                                               str_detect(relator, regex("CÁRMEN|CARMEN|GRAU|BRITTO|LEWANDOWSKI|ZANIN|DIREITO|TOFFOLI|BARBOSA|PELUSO|DINO")) ~ "Lula", 
+                                                                                                                               str_detect(relator, regex("FUX|BARROSO|FACHIN|TEORI|WEBER")) ~ "Dilma", 
+                                                                                                                               str_detect(relator, regex("MORAES")) ~ "Temer",
+                                                                                                                               str_detect(relator, regex("NUNES|MENDONÇA|MENDONCA")) ~ "Bolsonaro")) %>% 
+  mutate(Presidente_ideologia = case_when(str_detect(presidente_indicacao, regex("Sarney|Collor|Temer|Bolsonaro|Itamar|FHC|Geisel|Castelo|Figueiredo")) ~ "Direita",
+                                          str_detect(presidente_indicacao, regex("Dilma|Lula")) ~"Esquerda"))
+
+sumario2 <- sumario1 %>% select(relator, Presidente_ideologia, posicao_ideologia) %>% 
+  rename(Ministro = relator, Presidente_ideologia_indicacao = Presidente_ideologia) %>% na.omit() %>% 
+  mutate(posicao_ideologia_ajustada = posicao_ideologia + 50) 
+
+sumario2 <- sumario2[-c(16),]
+```
+
+# Teste da normalidade da distribuição da variável dependente - Teste de
+Shapiro-Wilk
+
+A hipótese nula não foi rejeitada (H0 = os dados seguem a distribuição
+normal).
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+library(rstatix)
+
+sumario2 %>% group_by(Presidente_ideologia_indicacao) %>% 
+  shapiro_test(posicao_ideologia_ajustada)
+```
+
+# Teste de variância - Teste de Levene
+
+P-valor menor que 0,05. Não se rejeita a hipótese nula. Os grupos
+("Direita" e "Esquerda") apresentam variâncias homogêneas.
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE }
+library(car)
+
+leveneTest(posicao_ideologia_ajustada ~ Presidente_ideologia_indicacao, 
+           data = sumario2, center = mean)
+
+```
+
+# Teste de hipótese - Teste-t para amostras independentes com variâncias iguais
+
+Tendo em vista a existência de duas amostras independentes ("decisões
+proferidas por Ministros do STF indicados por Presidentes classificados
+ideologicamente como de esquerda" e decisões proferidas por Ministros do
+STF indicados por Presidentes classificados ideologicamente como de
+direita") e considerando que essas amostras apresentam variâncias
+homogêneas, optou-se pelo "Teste-t para amostras independentes com
+variâncias iguais".
+
+É pressuposto do referido teste a distribuição normal dos dados. Em um
+primeiro momento, aferiu-se, por intermédio do Teste de Shapiro-Wilk,
+que a distribuição das observações relativas ao grupo dos Ministros
+indicados por Presidentes de Direita não era normal. Após análise
+pormenorizada dos dados, verificou-se que a anormalidade da distribuição
+decorria da existência de uma observação extrema ("outlier") - Ministro
+Ilmar Galvão. Optou-se por excluí-la, a fim de permitir a utilização do
+Teste-t.
+
+Hipótese nula (H0) não rejeitada. Inexistência, portanto, de divergência
+estatisticamente signficante entre os posicionamento ideológicos
+adotados pelos Ministros do STF indicados por Presidentes de Direita e
+de Esquerda.
+
+Anteriormente à exclusão da observação extrema ("outlier"), a divergência entre as 
+médias dos posicionamentos ideológicos dos grupos era estatisticamente significante. 
+Contudo,a distribuição dos dados do grupo "Direita" não era normal.  
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+library(infer)
+
+t_test_sumario2 <- sumario2 %>% 
+  t_test(formula = posicao_ideologia_ajustada ~ Presidente_ideologia_indicacao, 
+         order = c("Esquerda", "Direita"), var.equal = TRUE)
+t_test_sumario2
+```
+
+# Gráficos
+
+## Boxplot
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+boxplot <- boxplot(posicao_ideologia_ajustada ~ Presidente_ideologia_indicacao, data = sumario2, 
+                   ylab = "Posicionamento ideológico", 
+                   xlab = "Ideologia do Presidente responsável pela indicação")
+```
+
+## Gráfico de densidade
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+distribuição <- sumario2 %>% 
+  ggplot(aes(fill=Presidente_ideologia_indicacao,x=posicao_ideologia_ajustada, 
+             color=Presidente_ideologia_indicacao,group=Presidente_ideologia_indicacao)) + 
+  geom_density(color=NA,alpha=.65) + 
+  geom_vline(data=. %>% group_by(Presidente_ideologia_indicacao) %>% 
+               summarise(media=mean(posicao_ideologia_ajustada,na.rm = T)),
+             linewidth=1, aes(xintercept=media,color=Presidente_ideologia_indicacao)) + 
+  guides(color="none") + theme_minimal() + scale_x_continuous(breaks = seq(0, 100, by = 10)) +
+  labs(title = "Distribuição dos posicionamentos ideológicos dos Ministros do STF", x = "Posicionamento ideológico",
+       y = "Densidade", fill = "Ideologia do Presidente",
+       color = "Ideologia do Presidente responsável pela indicação")
+distribuição
+```
+
+## Médias e intervalos de confiança
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+sumario3 <- sumario2 %>%
+  group_by(Presidente_ideologia_indicacao) %>%
+  summarize(media = mean(posicao_ideologia_ajustada),
+    ci_lower = media - qt(0.975, df=n()-1) * sd(posicao_ideologia_ajustada)/sqrt(n()),
+    ci_upper = media + qt(0.975, df=n()-1) * sd(posicao_ideologia_ajustada)/sqrt(n()))
+
+
+intervalo <- ggplot(sumario3, aes(y = factor(Presidente_ideologia_indicacao, 
+                                                 labels = c("Direita", "Esquerda")), 
+                                      x = media, color = factor(Presidente_ideologia_indicacao))) +
+  geom_point(size = 3) +
+  geom_errorbarh(aes(xmin = ci_lower, xmax = ci_upper), height = 0.2) +
+  scale_color_manual(values = c("#1F77B4", "#FF7F0E")) + 
+  labs(title = "Posicionamento ideológico dos Ministros do STF",
+    x = "Posicionamento ideológico",
+    y = "Ideologia do Presidente", color = "Grupo") +
+  theme_minimal() + theme(legend.position = "none")
+intervalo
+```
+
+## Gráficos linear
+
+```{r,message=FALSE, warning=FALSE, echo=TRUE}
+intervalo2 <- sumario2 %>% ggplot(aes(y = posicao_ideologia_ajustada, x = factor(Presidente_ideologia_indicacao, labels = c("Direita", "Esquerda")), 
+                        color = factor(Presidente_ideologia_indicacao))) +
+  geom_point(alpha = 0.6) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", color = "black") +
+  scale_color_manual(values = c("#1F77B4", "#FF7F0E")) + 
+  labs(title = "Posicionamento ideológico dos Ministros do STF",
+    y = "Posicionamento ideológico",
+    x = "Ideologia do Presidente responsável pela indicação",
+    color = "Grupo") + theme_minimal() + theme(legend.position = "none")
+intervalo2
+```
+
+## Distribuição da hipótese nula
+
+```{r, message=FALSE, warning=FALSE, echo=TRUE}
+teste_t <- sumario2 %>% 
+  specify(posicao_ideologia_ajustada ~ Presidente_ideologia_indicacao) %>%
+  calculate(stat = "t", order = c("Direita","Esquerda"))
+
+distribuicao_teorica <- sumario2 %>% 
+  specify(posicao_ideologia_ajustada ~ Presidente_ideologia_indicacao) %>%
+  hypothesize(null = "independence") %>%
+  calculate(stat = "t", order = c("Direita","Esquerda"))
+
+distribuicao_teorica %>%
+  visualize(method = "theoretical") +
+  shade_p_value(distribuicao_teorica, direction = "two-sided") +
+  labs(title = "Distribuição teórica",x="Posicionamento ideológico",
+       y="Densidade")
+
+```
