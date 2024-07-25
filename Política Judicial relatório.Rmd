@@ -55,7 +55,7 @@ judiciaias proferidas após a promulgação da Constituição de 1988.
 ```{r, echo=TRUE, warning=FALSE, message=FALSE}
 pacman::p_load(tidyverse, readr, readxl, lubridate, dplyr, foreign, janitor)
 
-setwd("~/metodos_quantitativos_listas/Judicial-Politics")
+setwd("~/metodos_quantitativos_listas/Lista-5")
 ```
 
 ## Manipulação dos dados
@@ -63,7 +63,7 @@ setwd("~/metodos_quantitativos_listas/Judicial-Politics")
 Arquivos extraídos do sítio eletrônico do Programa "Corte Aberta" -
 (<https://portal.stf.jus.br/hotsites/corteaberta/>):
 processos_concentrado.xlsx; requerentes.xlsx; decisoes_concentrado.xlsx.
-(<https://github.com/Catisane-Git/Judicial-Politics->)
+(<https://github.com/Catisane-Git/Lista-5>)
 
 ## Preparação dos dados
 
